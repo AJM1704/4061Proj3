@@ -12,6 +12,11 @@ int queue_len = 0;  // Global integer to indicate the length of the queue
 database_entry_t database[DATABASE_SIZE];
 pthread_t dispatcher_thread[MAX_THREADS];
 pthread_t worker_thread[MAX_THREADS];
+request_details_t request_queue[MAX_QUEUE_LEN];
+int queue_front;
+int queue_back;
+pthread_mutex_t request_queue_mutex;
+pthread_mutex_t request_queue_length_mutex;
 
 /* TODO: Intermediate Submission
   TODO: Add any global variables that you may need to track the requests and
@@ -104,6 +109,7 @@ void loadDatabase(char *path) {}
 
 void *dispatch(void *thread_id) {
   while (1) {
+    //TODO: [VIVEK] change request_details to normal request_t use fd and really create it, test locks make CVs.
     size_t file_size = 0;
     request_detials_t request_details;
 
@@ -112,11 +118,15 @@ void *dispatch(void *thread_id) {
      *    Utility Function: int accept_connection(void)
      */
 
+    int conn = accept_connection();
+
     /* TODO: Intermediate Submission
      *    Description:      Get request from client
      *    Utility Function: char * get_request_server(int fd, size_t
      * *filelength)
      */
+
+    char* image_bytes = get_request_server(conn, &file_size);
 
     /* TODO
      *    Description:      Add the request into the queue
@@ -138,6 +148,18 @@ void *dispatch(void *thread_id) {
          //(6) Release the lock on the request queue and signal that the queue
      is not empty anymore
     */
+    char* filename = "test\0";
+    pthread_mutex_lock(&request_queue_mutex);
+    pthread_mutex_lock(&request_queue_length_mutex);
+    if (queue_len !=  MAX_QUEUE_LEN) {
+      request_queue[queue_back] = request_details;
+      queue_back += 1;
+      if (queue_back == MAX_QUEUE_LEN) {
+        queue_back = 0;
+      }
+    }
+    pthread_mutex_unlock(&request_queue_length_mutex);
+    pthread_mutex_unlock(&request_queue_mutex);
   }
   return NULL;
 }
@@ -156,6 +178,7 @@ void *worker(void *thread_id) {
   /* TODO : Intermediate Submission
    *    Description:      Get the id as an input argument from arg, set it to ID
    */
+  int id = *(int*) thread_id;
 
   while (1) {
     /* TODO
@@ -186,6 +209,25 @@ void *worker(void *thread_id) {
      * already done, you may want to have a global array to store the number for
      * each thread parameters passed in: refer to write up
      */
+    pthread_mutex_lock(&request_queue_mutex);
+    pthread_mutex_lock(&request_queue_length_mutex);
+    if (queue_len > 0) {
+      request_details_t request = request_queue[queue_front];
+      char* image_bytes = request.buffer;
+      //TODO: image_match might not return. assign fd in send_file_to_client
+      database_entry_t match = image_match(image_bytes, request.filelength);
+      send_file_to_client(0, match.buffer, match.file_size);
+      // LogPrettyPrint(, , , , )
+      queue_len -= 1;
+      queue_front += 1;
+      if (queue_front == MAX_QUEUE_LEN) {
+        queue_front = 0;
+      }
+    }
+    pthread_mutex_unlock(&request_queue_length_mutex);
+    pthread_mutex_unlock(&request_queue_mutex);
+
+
   }
 }
 
