@@ -1,4 +1,5 @@
 #include "../include/client.h"
+#include <string.h>
 
 
 
@@ -121,12 +122,25 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Usage: ./client <directory path> <Server Port> <output path>\n");
         exit(-1);
     }
+
+    char dirpath[512];
+    char outpath[512];
+    int port;
+
+    strncpy(dirpath, argv[1], 512);
+    port = atoi(argv[2]);
+    strncpy(outpath, argv[3], 512);
+
+    
     /*TODO:  Intermediate Submission
     * 1. Get the input args --> (1) directory path (2) Server Port (3) output path
     */
 
     /*TODO: Intermediate Submission
     * Call the directory_trav function to traverse the directory and send the images to the server
+
+
     */
+    directory_trav(dirpath);
     return 0;  
 }
