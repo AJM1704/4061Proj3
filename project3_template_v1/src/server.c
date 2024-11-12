@@ -12,11 +12,7 @@ int queue_len = 0;  // Global integer to indicate the length of the queue
 database_entry_t database[DATABASE_SIZE];
 pthread_t dispatcher_thread[MAX_THREADS];
 pthread_t worker_thread[MAX_THREADS];
-request_details_t request_queue[MAX_QUEUE_LEN];
-int queue_front;
-int queue_back;
-pthread_mutex_t request_queue_mutex;
-pthread_mutex_t request_queue_length_mutex;
+
 
 /* TODO: Intermediate Submission
   TODO: Add any global variables that you may need to track the requests and
@@ -105,8 +101,6 @@ void LogPrettyPrint(FILE *to_write, int threadId, int requestNumber,
 */
 /***********/
 void loadDatabase(char *path){
-  //char dir_path[BUFF_SIZE]; 
-  //strcpy(dir_path, img_directory_path);
   struct dirent *entry; 
   DIR *dir = opendir(path);
   if (dir == NULL)
@@ -114,7 +108,7 @@ void loadDatabase(char *path){
     perror("Opendir ERROR");
     exit(0);
   }
-  int database_size = 0;
+
   while ((entry = readdir(dir)) != NULL && database_size < DATABASE_SIZE)
   {
     if(strcmp(entry->d_name, ".") == 0 && strcmp(entry->d_name, "..") == 0)
@@ -149,6 +143,8 @@ void loadDatabase(char *path){
     database[database_size].file_name[1028 - 1] = '\0';
     database[database_size].file_size = file_size;
     database[database_size].buffer = buffer;
+
+    database_size ++;
   }
   closedir(dir);
 }
