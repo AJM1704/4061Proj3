@@ -12,6 +12,7 @@ int queue_len = 0;  // Global integer to indicate the length of the queue
 database_entry_t database[DATABASE_SIZE];
 pthread_t dispatcher_thread[MAX_THREADS];
 pthread_t worker_thread[MAX_THREADS];
+int database_size = 0;
 
 /* TODO: Intermediate Submission
   TODO: Add any global variables that you may need to track the requests and
@@ -100,8 +101,6 @@ void LogPrettyPrint(FILE *to_write, int threadId, int requestNumber,
 */
 /***********/
 void loadDatabase(char *path){
-  //char dir_path[BUFF_SIZE]; 
-  //strcpy(dir_path, img_directory_path);
   struct dirent *entry; 
   DIR *dir = opendir(path);
   if (dir == NULL)
@@ -109,14 +108,10 @@ void loadDatabase(char *path){
     perror("Opendir ERROR");
     exit(0);
   }
-  while ((entry = readdir(dir)) != NULL && database_size < database_size)
+  while ((entry = readdir(dir)) != NULL && database_size < DATABASE_SIZE)
   {
     if(strcmp(entry->d_name, ".") == 0 && strcmp(entry->d_name, "..") == 0)
     {
-      // sprintf(req_entries[worker_thread_id].file_name, "%s/%s", dir_path, entry->d_name);
-      // printf("New path: %s\n", req_entries[worker_thread_id].file_name);
-      // pthread_create(&worker_thread[worker_thread_id], NULL, request_handle, (void *) req_entries[worker_thread_id].file_name);
-      // worker_thread_id++;
       continue;
     }
 
@@ -147,12 +142,10 @@ void loadDatabase(char *path){
     database[database_size].file_name[MAX_FILE_NAME_LENGTH - 1] = '\0';
     database[database_size].file_size = file_size;
     database[database_size].buffer = buffer;
+
+    database_size ++;
   }
   closedir(dir);
-  for(int i = 0; i < worker_thread_id; i++)
-  {
-    pthread_join(worker_thread[i], NULL);
-  }
 }
 
 void *dispatch(void *thread_id) {
