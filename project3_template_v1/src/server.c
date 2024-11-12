@@ -104,8 +104,61 @@ void LogPrettyPrint(FILE *to_write, int threadId, int requestNumber,
           - You will need to increment the number of images in the database
 */
 /***********/
+void loadDatabase(char *path){
+  //char dir_path[BUFF_SIZE]; 
+  //strcpy(dir_path, img_directory_path);
+  struct dirent *entry; 
+  DIR *dir = opendir(path);
+  if (dir == NULL)
+  {
+    perror("Opendir ERROR");
+    exit(0);
+  }
+  while ((entry = readdir(dir)) != NULL && database_size < database_size)
+  {
+    if(strcmp(entry->d_name, ".") == 0 && strcmp(entry->d_name, "..") == 0)
+    {
+      // sprintf(req_entries[worker_thread_id].file_name, "%s/%s", dir_path, entry->d_name);
+      // printf("New path: %s\n", req_entries[worker_thread_id].file_name);
+      // pthread_create(&worker_thread[worker_thread_id], NULL, request_handle, (void *) req_entries[worker_thread_id].file_name);
+      // worker_thread_id++;
+      continue;
+    }
 
-void loadDatabase(char *path) {}
+    char file_path[1024];
+    snprintf(file_path, sizeof(file_path), "%s/%s", path, entry->d_name);
+
+    FILE *file = fopen(file_path, "rb");
+    if (file == NULL) {
+      perror("Could not open file");
+      continue;
+    }
+
+    fseek(file, 0, SEEK_END);
+    int file_size = ftell(file);
+    rewind(file);
+
+    char *buffer = (char *)malloc(file_size);
+    if (buffer == NULL) {
+      perror("Memory allocation failed");
+      fclose(file);
+      continue;
+    }
+
+    fread(buffer, 1, file_size, file);
+    fclose(file);
+
+    strncpy(database[database_size].file_name, entry->d_name, MAX_FILE_NAME_LENGTH - 1);
+    database[database_size].file_name[MAX_FILE_NAME_LENGTH - 1] = '\0';
+    database[database_size].file_size = file_size;
+    database[database_size].buffer = buffer;
+  }
+  closedir(dir);
+  for(int i = 0; i < worker_thread_id; i++)
+  {
+    pthread_join(worker_thread[i], NULL);
+  }
+}
 
 void *dispatch(void *thread_id) {
   while (1) {
