@@ -54,6 +54,7 @@
 #define INVALID_FLAG 99999                          //Reusable flag to marking a flag as invalid
 #define BUFF_SIZE 1024                              //Maximum file path length to make things easier
 #define BUFFER_SIZE 1028
+#define DATABASE_SIZE 1028
 #define LOG_FILE_NAME "server_log"               //Standardized log file name
 
 
