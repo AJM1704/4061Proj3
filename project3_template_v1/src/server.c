@@ -114,14 +114,11 @@ void loadDatabase(char *path){
     perror("Opendir ERROR");
     exit(0);
   }
-  while ((entry = readdir(dir)) != NULL && database_size < database_size)
+  int database_size = 0;
+  while ((entry = readdir(dir)) != NULL && database_size < DATABASE_SIZE)
   {
     if(strcmp(entry->d_name, ".") == 0 && strcmp(entry->d_name, "..") == 0)
     {
-      // sprintf(req_entries[worker_thread_id].file_name, "%s/%s", dir_path, entry->d_name);
-      // printf("New path: %s\n", req_entries[worker_thread_id].file_name);
-      // pthread_create(&worker_thread[worker_thread_id], NULL, request_handle, (void *) req_entries[worker_thread_id].file_name);
-      // worker_thread_id++;
       continue;
     }
 
@@ -148,23 +145,19 @@ void loadDatabase(char *path){
     fread(buffer, 1, file_size, file);
     fclose(file);
 
-    strncpy(database[database_size].file_name, entry->d_name, MAX_FILE_NAME_LENGTH - 1);
-    database[database_size].file_name[MAX_FILE_NAME_LENGTH - 1] = '\0';
+    strncpy(database[database_size].file_name, entry->d_name, 1028 - 1);
+    database[database_size].file_name[1028 - 1] = '\0';
     database[database_size].file_size = file_size;
     database[database_size].buffer = buffer;
   }
   closedir(dir);
-  for(int i = 0; i < worker_thread_id; i++)
-  {
-    pthread_join(worker_thread[i], NULL);
-  }
 }
 
 void *dispatch(void *thread_id) {
   while (1) {
     //TODO: [VIVEK] change request_details to normal request_t use fd and really create it, test locks make CVs.
     size_t file_size = 0;
-    request_detials_t request_details;
+    request_details_t request_details;
 
     /* TODO: Intermediate Submission
      *    Description:      Accept client connection
@@ -314,7 +307,7 @@ int main(int argc, char *argv[]) {
    * name, what open flags do you want?
    */
 
-  logfile = fopen("server_log", "rw+");
+  logfile = fopen("server_log", "w+");
   if (logfile == NULL) {
     perror("Error opening logfile !");
     exit(EXIT_FAILURE);
