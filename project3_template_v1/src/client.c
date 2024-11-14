@@ -1,4 +1,5 @@
 #include "../include/client.h"
+#include <fcntl.h>
 #include <string.h>
 
 
@@ -7,7 +8,7 @@ int port = 0;
 
 pthread_t worker_thread[100];
 int worker_thread_id = 0;
-char output_path[1028];
+char output_dir[BUFF_SIZE];
 
 processing_args_t req_entries[100];
 
@@ -22,6 +23,19 @@ processing_args_t req_entries[100];
 */
 void * request_handle(void * img_file_path)
 {
+    char file_name[BUFF_SIZE];
+    strncpy(file_name, (char*) img_file_path, BUFF_SIZE);
+    FILE* file = fopen(file_name, "rb");
+    fseek(file, 0, SEEK_END);
+    int size = ftell(file);
+    rewind(file);
+
+    int conn = setup_connection(port);
+    send_file_to_server(conn, file ,size );
+    char output_path[BUFF_SIZE];
+    snprintf(output_path, BUFF_SIZE, "%s/%s", output_dir, file_name);
+    receive_file_from_server(conn, output_path);
+    fclose(file);
     return NULL;
 }
 
@@ -57,19 +71,17 @@ void directory_trav(char * img_directory_path)
 
 int main(int argc, char *argv[])
 {
-    if(argc < 2)
+    if(argc < 3)
     {
         fprintf(stderr, "Usage: ./client <directory path> <Server Port> <output path>\n");
         exit(-1);
     }
 
-    char dirpath[512];
-    char outpath[512];
-    int port;
+    char dirpath[BUFF_SIZE];
 
-    strncpy(dirpath, argv[1], 512);
+    strncpy(dirpath, argv[1], BUFF_SIZE);
     port = atoi(argv[2]);
-    strncpy(outpath, argv[3], 512);
+    strncpy(output_dir, argv[3], BUFF_SIZE);
 
     
     /*TODO:  Intermediate Submission

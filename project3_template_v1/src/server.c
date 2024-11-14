@@ -12,11 +12,13 @@ int queue_len = 0;  // Global integer to indicate the length of the queue
 database_entry_t database[DATABASE_SIZE];
 pthread_t dispatcher_thread[MAX_THREADS];
 pthread_t worker_thread[MAX_THREADS];
-request_details_t request_queue[MAX_QUEUE_LEN];
+request_t request_queue[MAX_QUEUE_LEN];
+int queued_item_count;
 int queue_front;
 int queue_back;
 pthread_mutex_t request_queue_mutex;
-pthread_mutex_t request_queue_length_mutex;
+pthread_mutex_t request_queue_itemcount_mutex;
+int database_image_count = 0;
 
 /* TODO: Intermediate Submission
   TODO: Add any global variables that you may need to track the requests and
@@ -48,16 +50,17 @@ pthread_mutex_t request_queue_length_mutex;
        - database_entry_t that is the closest match to the input_image
 ************************************************/
 // just uncomment out when you are ready to implement this function
-database_entry_t image_match(char *input_image, int size) {
+int image_match(char *input_image, int size, database_entry_t* entry) {
   const char *closest_file = NULL;
   int closest_distance = 10;
   int closest_index = 0;
-  for (int i = 0; i < 0 /* replace with your database size*/; i++) {
+  for (int i = 0; i < database_image_count/* replace with your database size*/; i++) {
     const char
-        *current_file; /* TODO: assign to the buffer from the database struct*/
+        *current_file = database[i].buffer; /* TODO: assign to the buffer from the database struct*/
     int result = memcmp(input_image, current_file, size);
     if (result == 0) {
-      return database[i];
+      *entry = database[closest_index];
+      return 0;
     }
 
     else if (result < closest_distance) {
@@ -68,9 +71,11 @@ database_entry_t image_match(char *input_image, int size) {
   }
 
   if (closest_file != NULL) {
-    return database[closest_index];
+    *entry = database[closest_index];
+    return 0;
   } else {
     printf("No closest file found.\n");
+    return -1;
   }
 }
 
@@ -85,7 +90,25 @@ database_entry_t image_match(char *input_image, int size) {
        - no return value
 ************************************************/
 void LogPrettyPrint(FILE *to_write, int threadId, int requestNumber,
-                    char *file_name, int file_size) {}
+                    char *file_name, int file_size) {
+  
+  if (!to_write) {
+    if (file_size ==  -1) {
+      printf("[%d][%d][][No match!]\n", threadId, requestNumber);
+    }
+    else {
+      printf("[%d][%d][%s][%d]\n", threadId, requestNumber, file_name, file_size);
+    }
+  }
+  else {
+    if (file_size ==  -1) {
+      fprintf(to_write, "[%d][%d][][No match!]\n", threadId, requestNumber);
+    }
+    else {
+      fprintf(to_write, "[%d][%d][%s][%d]\n", threadId, requestNumber, file_name, file_size);
+    }
+  }
+}
 
 /*
   TODO: Implement this function for Intermediate Submission
@@ -105,8 +128,8 @@ void LogPrettyPrint(FILE *to_write, int threadId, int requestNumber,
 */
 /***********/
 void loadDatabase(char *path){
-  //char dir_path[BUFF_SIZE]; 
-  //strcpy(dir_path, img_directory_path);
+  char dir_path[BUFF_SIZE]; 
+  strncpy(dir_path, path, BUFF_SIZE);
   struct dirent *entry; 
   DIR *dir = opendir(path);
   if (dir == NULL)
@@ -114,16 +137,16 @@ void loadDatabase(char *path){
     perror("Opendir ERROR");
     exit(0);
   }
-  int database_size = 0;
-  while ((entry = readdir(dir)) != NULL && database_size < DATABASE_SIZE)
+  while ((entry = readdir(dir)) != NULL && database_image_count < DATABASE_SIZE)
   {
-    if(strcmp(entry->d_name, ".") == 0 && strcmp(entry->d_name, "..") == 0)
+    if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
     {
       continue;
     }
 
-    char file_path[1024];
+    char file_path[BUFF_SIZE];
     snprintf(file_path, sizeof(file_path), "%s/%s", path, entry->d_name);
+    printf("Adding %s/%s to the database.\n", path, entry->d_name);
 
     FILE *file = fopen(file_path, "rb");
     if (file == NULL) {
@@ -133,9 +156,13 @@ void loadDatabase(char *path){
 
     fseek(file, 0, SEEK_END);
     int file_size = ftell(file);
+    if (file_size < 0) {
+      perror("Error reading file!");
+      continue;
+    }
     rewind(file);
 
-    char *buffer = (char *)malloc(file_size);
+    char *buffer = (char *) malloc(file_size);
     if (buffer == NULL) {
       perror("Memory allocation failed");
       fclose(file);
@@ -145,19 +172,22 @@ void loadDatabase(char *path){
     fread(buffer, 1, file_size, file);
     fclose(file);
 
-    strncpy(database[database_size].file_name, entry->d_name, 1028 - 1);
-    database[database_size].file_name[1028 - 1] = '\0';
-    database[database_size].file_size = file_size;
-    database[database_size].buffer = buffer;
+    strncpy(database[database_image_count].file_name, entry->d_name, 1028 - 1);
+    database[database_image_count].file_name[1028 - 1] = '\0';
+    database[database_image_count].file_size = file_size;
+    database[database_image_count].buffer = buffer;
+    printf("Added %s[%d] as [%d] database element\n", database[database_image_count].file_name, database[database_image_count].file_size, database_image_count);
+    database_image_count += 1;
   }
   closedir(dir);
+  printf("Loaded %d images into database!\n", database_image_count);
 }
 
 void *dispatch(void *thread_id) {
   while (1) {
     //TODO: [VIVEK] change request_details to normal request_t use fd and really create it, test locks make CVs.
     size_t file_size = 0;
-    request_details_t request_details;
+    request_t request;
 
     /* TODO: Intermediate Submission
      *    Description:      Accept client connection
@@ -165,6 +195,7 @@ void *dispatch(void *thread_id) {
      */
 
     int conn = accept_connection();
+    printf("Dispatcher [%d] accepted connection!\n", *(int*) thread_id);
 
     /* TODO: Intermediate Submission
      *    Description:      Get request from client
@@ -194,17 +225,22 @@ void *dispatch(void *thread_id) {
          //(6) Release the lock on the request queue and signal that the queue
      is not empty anymore
     */
-    char* filename = "test\0";
+    request.buffer = image_bytes;
+    request.file_descriptor = conn;
+    request.file_size = file_size;
+
     pthread_mutex_lock(&request_queue_mutex);
-    pthread_mutex_lock(&request_queue_length_mutex);
-    if (queue_len !=  MAX_QUEUE_LEN) {
-      request_queue[queue_back] = request_details;
+    pthread_mutex_lock(&request_queue_itemcount_mutex);
+    if (queued_item_count !=  queue_len) {
+      request_queue[queue_back] = request;
       queue_back += 1;
-      if (queue_back == MAX_QUEUE_LEN) {
+      if (queue_back == queue_len) {
         queue_back = 0;
       }
+      queued_item_count += 1;
+      printf("Dispatcher [%d] added request to queue [%d]!\n", *(int*) thread_id, queued_item_count);
     }
-    pthread_mutex_unlock(&request_queue_length_mutex);
+    pthread_mutex_unlock(&request_queue_itemcount_mutex);
     pthread_mutex_unlock(&request_queue_mutex);
   }
   return NULL;
@@ -215,11 +251,12 @@ void *worker(void *thread_id) {
   // You may use them or not, depends on how you implement the function
   int num_request =
       0; // Integer for tracking each request for printing into the log file
-  int fileSize = 0; // Integer to hold the size of the file being requested
-  void *memory =
-      NULL; // memory pointer where contents being requested are read and stored
-  int fd = INVALID; // Integer to hold the file descriptor of incoming request
-  char *mybuf;      // String to hold the contents of the file being requested
+  // int fileSize = 0; // Integer to hold the size of the file being requested
+  // void *memory =
+  //     NULL; // memory pointer where contents being requested are read and stored
+  // int fd = INVALID; // Integer to hold the file descriptor of incoming request
+  char * image_bytes;      // String to hold the contents of the file being requested
+  database_entry_t match; 
 
   /* TODO : Intermediate Submission
    *    Description:      Get the id as an input argument from arg, set it to ID
@@ -256,24 +293,30 @@ void *worker(void *thread_id) {
      * each thread parameters passed in: refer to write up
      */
     pthread_mutex_lock(&request_queue_mutex);
-    pthread_mutex_lock(&request_queue_length_mutex);
-    if (queue_len > 0) {
-      request_details_t request = request_queue[queue_front];
-      char* image_bytes = request.buffer;
-      //TODO: image_match might not return. assign fd in send_file_to_client
-      database_entry_t match = image_match(image_bytes, request.filelength);
-      send_file_to_client(0, match.buffer, match.file_size);
-      // LogPrettyPrint(, , , , )
-      queue_len -= 1;
+    pthread_mutex_lock(&request_queue_itemcount_mutex);
+    if (queued_item_count > 0) {
+      printf("Worker [%d] recieved request from queue\n", id);
+      request_t request = request_queue[queue_front];
+      image_bytes = request.buffer;
+      if (image_match(image_bytes, request.file_size, &match) == 0) {
+        send_file_to_client(request.file_descriptor, match.buffer, match.file_size);
+        LogPrettyPrint(NULL, id, num_request, match.file_name, match.file_size);
+      }
+      else  {
+        // No match!
+        send_file_to_client(request.file_descriptor, NULL, 0);
+        LogPrettyPrint(NULL, id, num_request, "", -1);
+      }
+      queued_item_count -= 1;
+      printf("Worker [%d] reduced requests in queue: [%d]\n", id, queued_item_count);
       queue_front += 1;
-      if (queue_front == MAX_QUEUE_LEN) {
+      if (queue_front == queue_len) {
         queue_front = 0;
       }
+      num_request += 1;
     }
-    pthread_mutex_unlock(&request_queue_length_mutex);
+    pthread_mutex_unlock(&request_queue_itemcount_mutex);
     pthread_mutex_unlock(&request_queue_mutex);
-
-
   }
 }
 
