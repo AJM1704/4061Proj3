@@ -1,4 +1,5 @@
 #include "../include/client.h"
+#include <fcntl.h>
 #include <string.h>
 
 
@@ -7,7 +8,7 @@ int port = 0;
 
 pthread_t worker_thread[100];
 int worker_thread_id = 0;
-char output_path[1028];
+char output_dir[BUFF_SIZE];
 
 processing_args_t req_entries[100];
 
@@ -22,66 +23,21 @@ processing_args_t req_entries[100];
 */
 void * request_handle(void * img_file_path)
 {
-    FILE *file;
-    long file_size;
-    char *buffer;
-    int socket;
-    struct sockaddr_in server_addr;
 
-    //1. Open the file in the read-binary mode (i.e. "rb" mode)
-    file = fopen((char *) img_file_path, "rb");
-    if(file == NULL) {
-        perror("File open failed");
-        return NULL;
-    }
-
-    //2. Get the file length using the fseek and ftell functions
+    char file_name[BUFF_SIZE];
+    strncpy(file_name, (char*) img_file_path, BUFF_SIZE);
+    FILE* file = fopen(file_name, "rb");
     fseek(file, 0, SEEK_END);
-    file_size = ftell(file);
-    fseek(file, 0, SEEK_SET);
+    int size = ftell(file);
+    rewind(file);
 
-    // Allocate memory to store the file content
-    buffer = (char *)malloc(file_size);
-    if (buffer == NULL)
-    {
-        perror("Memory allocation failed");
-        fclose(file);
-        return NULL;
-    }
-
-    // Read the file content into the buffer
-    fread(buffer, 1, file_size, file);  
+    int conn = setup_connection(port);
+    send_file_to_server(conn, file ,size );
+    char output_path[BUFF_SIZE];
+    snprintf(output_path, BUFF_SIZE, "%s/%s", output_dir, file_name);
+    receive_file_from_server(conn, output_path);
     fclose(file);
 
-    //3. set up the connection with the server using the setup_connection(int port) function
-    socket = setup_connection(port);
-    if (socket < 0)
-    {
-        free(buffer);
-        return NULL;
-    }
-
-    //4. Send the file to the server using the send_file_to_server(int fd, FILE *file, int size) function
-    if (send_file_to_server(socket, buffer, file_size) < 0)
-    {
-        perror("File send failed");
-        close(socket);
-        free(buffer);
-        return NULL;
-    }
-
-    //5. & 6. Receive the processed image from the server using the receive_file_from_server(int socket, char *file_path)
-    if (receive_file_from_server(socket, output_path) < 0)
-    {
-        perror("File receive failed");
-        close(socket);
-        free(buffer);
-        return NULL;
-    }
-
-    //7. Close the file
-    close(socket);
-    free(buffer);
     return NULL;
 }
 
@@ -117,19 +73,17 @@ void directory_trav(char * img_directory_path)
 
 int main(int argc, char *argv[])
 {
-    if(argc < 2)
+    if(argc < 3)
     {
         fprintf(stderr, "Usage: ./client <directory path> <Server Port> <output path>\n");
         exit(-1);
     }
 
-    char dirpath[512];
-    char outpath[512];
-    int port;
+    char dirpath[BUFF_SIZE];
 
-    strncpy(dirpath, argv[1], 512);
+    strncpy(dirpath, argv[1], BUFF_SIZE);
     port = atoi(argv[2]);
-    strncpy(outpath, argv[3], 512);
+    strncpy(output_dir, argv[3], BUFF_SIZE);
 
     
     /*TODO:  Intermediate Submission
