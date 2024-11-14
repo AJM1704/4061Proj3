@@ -23,6 +23,7 @@ processing_args_t req_entries[100];
 */
 void * request_handle(void * img_file_path)
 {
+
     char file_name[BUFF_SIZE];
     strncpy(file_name, (char*) img_file_path, BUFF_SIZE);
     FILE* file = fopen(file_name, "rb");
@@ -36,6 +37,7 @@ void * request_handle(void * img_file_path)
     snprintf(output_path, BUFF_SIZE, "%s/%s", output_dir, file_name);
     receive_file_from_server(conn, output_path);
     fclose(file);
+
     return NULL;
 }
 

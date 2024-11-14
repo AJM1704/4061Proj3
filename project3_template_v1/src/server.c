@@ -20,6 +20,7 @@ pthread_mutex_t request_queue_mutex;
 pthread_mutex_t request_queue_itemcount_mutex;
 int database_image_count = 0;
 
+
 /* TODO: Intermediate Submission
   TODO: Add any global variables that you may need to track the requests and
   threads [multiple funct]  --> How will you track the p_thread's that you
@@ -130,13 +131,7 @@ void LogPrettyPrint(FILE *to_write, int threadId, int requestNumber,
 void loadDatabase(char *path){
   char dir_path[BUFF_SIZE]; 
   strncpy(dir_path, path, BUFF_SIZE);
-  struct dirent *entry; 
-  DIR *dir = opendir(path);
-  if (dir == NULL)
-  {
-    perror("Opendir ERROR");
-    exit(0);
-  }
+
   while ((entry = readdir(dir)) != NULL && database_image_count < DATABASE_SIZE)
   {
     if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
@@ -172,12 +167,14 @@ void loadDatabase(char *path){
     fread(buffer, 1, file_size, file);
     fclose(file);
 
+
     strncpy(database[database_image_count].file_name, entry->d_name, 1028 - 1);
     database[database_image_count].file_name[1028 - 1] = '\0';
     database[database_image_count].file_size = file_size;
     database[database_image_count].buffer = buffer;
     printf("Added %s[%d] as [%d] database element\n", database[database_image_count].file_name, database[database_image_count].file_size, database_image_count);
     database_image_count += 1;
+
   }
   closedir(dir);
   printf("Loaded %d images into database!\n", database_image_count);
