@@ -129,9 +129,16 @@ void LogPrettyPrint(FILE *to_write, int threadId, int requestNumber,
 */
 /***********/
 void loadDatabase(char *path){
+  struct dirent *entry;
+  DIR *dir = opendir(path);
   char dir_path[BUFF_SIZE]; 
   strncpy(dir_path, path, BUFF_SIZE);
 
+  if (dir == NULL) {
+    perror("Could not open directory");
+    return;
+  }
+  
   while ((entry = readdir(dir)) != NULL && database_image_count < DATABASE_SIZE)
   {
     if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
