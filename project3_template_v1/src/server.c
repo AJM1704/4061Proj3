@@ -94,9 +94,11 @@ int image_match(char *input_image, int size, database_entry_t* entry) {
    - returns:
        - no return value
 ************************************************/
+pthread_mutex_t log_mutex;
+
 void LogPrettyPrint(FILE *to_write, int threadId, int requestNumber,
                     char *file_name, int file_size) {
-  
+  pthread_mutex_lock(&log_mutex);
   if (!to_write) {
     if (file_size ==  -1) {
       printf("[%d][%d][][No match!]\n", threadId, requestNumber);
@@ -117,6 +119,7 @@ void LogPrettyPrint(FILE *to_write, int threadId, int requestNumber,
     fflush(logfile);
     pthread_mutex_unlock(&logfile_mutex);
   }
+  pthread_mutex_unlock(&log_mutex);
 }
 
 /*
@@ -338,6 +341,7 @@ void *worker(void *thread_id) {
 }
 
 int main(int argc, char *argv[]) {
+  pthread_mutex_init(&log_mutex, NULL);
   if (argc != 6) {
     printf("usage: %s port path num_dispatcher num_workers queue_length \n",
            argv[0]);
@@ -393,12 +397,17 @@ int main(int argc, char *argv[]) {
    * thread ID's How should you track this p_thread so you can terminate it
    * later? [global]
    */
+  int dispatcher_ids[MAX_THREADS];
+  int worker_ids[MAX_THREADS];
+
   for (int i = 0; i < num_dispatcher; i++) {
-    pthread_create(&dispatcher_thread[i], NULL , dispatch,  &i);
+    dispatcher_ids[i] = i;
+    pthread_create(&dispatcher_thread[i], NULL, dispatch, &dispatcher_ids[i]);
   }
 
   for (int i = 0; i < num_worker; i++) {
-    pthread_create(&worker_thread[i], NULL , worker, &i);
+    worker_ids[i] = i;
+    pthread_create(&worker_thread[i], NULL, worker, &worker_ids[i]);
   }
   // Wait for each of the threads to complete their work
   // Threads (if created) will not exit (see while loop), but this keeps main
@@ -411,11 +420,12 @@ int main(int argc, char *argv[]) {
     }
   }
   for (i = 0; i < num_worker; i++) {
-    // fprintf(stderr, "JOINING WORKER %d \n",i);
+    fprintf(stderr, "JOINING WORKER %d \n",i);
     if ((pthread_join(worker_thread[i], NULL)) != 0) {
       printf("ERROR : Fail to join worker thread %d.\n", i);
     }
   }
   fprintf(stderr, "SERVER DONE \n"); // will never be reached in SOLUTION
   fclose(logfile);                   // closing the log files
+  pthread_mutex_destroy(&log_mutex);
 }
