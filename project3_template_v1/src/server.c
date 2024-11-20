@@ -1,6 +1,7 @@
 #include "../include/server.h"
 #include <linux/limits.h>
 #include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 // /********************* [ Helpful Global Variables ] **********************/
@@ -18,6 +19,9 @@ int queue_front;
 int queue_back;
 pthread_mutex_t request_queue_mutex;
 pthread_mutex_t request_queue_itemcount_mutex;
+pthread_cond_t queue_not_full_cond;
+pthread_cond_t queue_not_empty_cond;
+pthread_mutex_t logfile_mutex;
 int database_image_count = 0;
 
 
@@ -104,12 +108,16 @@ void LogPrettyPrint(FILE *to_write, int threadId, int requestNumber,
     }
   }
   else {
+    pthread_mutex_lock(&logfile_mutex);
     if (file_size ==  -1) {
       fprintf(to_write, "[%d][%d][][No match!]\n", threadId, requestNumber);
     }
     else {
       fprintf(to_write, "[%d][%d][%s][%d]\n", threadId, requestNumber, file_name, file_size);
     }
+    // Flush file write because we might not close the file in case of cntrl c!
+    fflush(logfile);
+    pthread_mutex_unlock(&logfile_mutex);
   }
   pthread_mutex_unlock(&log_mutex);
 }
@@ -237,17 +245,18 @@ void *dispatch(void *thread_id) {
     request.file_size = file_size;
 
     pthread_mutex_lock(&request_queue_mutex);
-    pthread_mutex_lock(&request_queue_itemcount_mutex);
-    if (queued_item_count !=  queue_len) {
-      request_queue[queue_back] = request;
-      queue_back += 1;
-      if (queue_back == queue_len) {
-        queue_back = 0;
-      }
-      queued_item_count += 1;
-      printf("Dispatcher [%d] added request to queue [%d]!\n", *(int*) thread_id, queued_item_count);
+    while (queued_item_count ==  queue_len) {
+      pthread_cond_wait(&queue_not_full_cond, &request_queue_mutex);
     }
-    pthread_mutex_unlock(&request_queue_itemcount_mutex);
+
+    request_queue[queue_back] = request;
+    queue_back += 1;
+    if (queue_back == queue_len) {
+      queue_back = 0;
+    }
+    queued_item_count += 1;
+    printf("Dispatcher [%d] added request to queue [%d]!\n", *(int*) thread_id, queued_item_count);
+    pthread_cond_signal(&queue_not_empty_cond);
     pthread_mutex_unlock(&request_queue_mutex);
   }
   return NULL;
@@ -300,29 +309,33 @@ void *worker(void *thread_id) {
      * each thread parameters passed in: refer to write up
      */
     pthread_mutex_lock(&request_queue_mutex);
-    pthread_mutex_lock(&request_queue_itemcount_mutex);
-    if (queued_item_count > 0) {
-      printf("Worker [%d] recieved request from queue\n", id);
-      request_t request = request_queue[queue_front];
-      image_bytes = request.buffer;
-      if (image_match(image_bytes, request.file_size, &match) == 0) {
-        send_file_to_client(request.file_descriptor, match.buffer, match.file_size);
-        LogPrettyPrint(NULL, id, num_request, match.file_name, match.file_size);
-      }
-      else  {
-        // No match!
-        send_file_to_client(request.file_descriptor, NULL, 0);
-        LogPrettyPrint(NULL, id, num_request, "", -1);
-      }
-      queued_item_count -= 1;
-      printf("Worker [%d] reduced requests in queue: [%d]\n", id, queued_item_count);
-      queue_front += 1;
-      if (queue_front == queue_len) {
-        queue_front = 0;
-      }
-      num_request += 1;
+    while (queued_item_count == 0) {
+      pthread_cond_wait(&queue_not_empty_cond, &request_queue_mutex); 
     }
-    pthread_mutex_unlock(&request_queue_itemcount_mutex);
+
+    num_request += 1;
+    printf("Worker [%d] recieved request from queue\n", id);
+    request_t request = request_queue[queue_front];
+    image_bytes = request.buffer;
+    if (image_match(image_bytes, request.file_size, &match) == 0) {
+      send_file_to_client(request.file_descriptor, match.buffer, match.file_size);
+      LogPrettyPrint(NULL, id, num_request, match.file_name, match.file_size);
+      LogPrettyPrint(logfile, id, num_request, match.file_name, match.file_size);
+    }
+    else  {
+      // No match!
+      send_file_to_client(request.file_descriptor, "\0", 1);
+      LogPrettyPrint(NULL, id, num_request, "", -1);
+      LogPrettyPrint(logfile, id, num_request, match.file_name, match.file_size);
+    }
+    queued_item_count -= 1;
+    printf("Worker [%d] reduced requests in queue: [%d]\n", id, queued_item_count);
+    queue_front += 1;
+    if (queue_front == queue_len) {
+      queue_front = 0;
+    }
+    
+    pthread_cond_signal(&queue_not_full_cond);
     pthread_mutex_unlock(&request_queue_mutex);
   }
 }
@@ -358,7 +371,7 @@ int main(int argc, char *argv[]) {
    * name, what open flags do you want?
    */
 
-  logfile = fopen("server_log", "w+");
+  logfile = fopen("server_log.txt", "w+");
   if (logfile == NULL) {
     perror("Error opening logfile !");
     exit(EXIT_FAILURE);
